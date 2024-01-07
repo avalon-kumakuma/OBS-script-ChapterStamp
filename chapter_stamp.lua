@@ -457,7 +457,7 @@ function chapterstamp_frontend_event(event)
         update_chapter_stamp_config_value()     -- chapter_stamp.lua config値設定
         chapterstamp_started(event, event_time)
     end
-    if event == obs.OBS_FRONTEND_EVENT_STREAMIN1G_STOPPED
+    if event == obs.OBS_FRONTEND_EVENT_STREAMING_STOPPED
      or event == obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED
      or event == obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_STOPPED then
         chapterstamp_stopped(event, event_time)
@@ -733,8 +733,8 @@ function write_chapter_stamp(event, event_time)
     -- custom hotkey
     for i = 1, stamp_flg.chotkey_max_number do
         if event == OBS_FRONTEND_EVENT_CUSTOMHOTKEY[i] then
-            line = format_chapter_line(string.format("%s%s%s%s&t=%d", 
-                get_current_sname(), schar, stamp_flg.chotkey_label[i], schar, diffime), diffime)
+            line = format_chapter_line(string.format("%s%s%s%s%s&t=%d", 
+                get_current_sname(), schar, stamp_flg.chotkey_label[i], schar, schar, diffime), diffime)
         end
     end
 

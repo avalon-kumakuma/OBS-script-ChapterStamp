@@ -25,7 +25,7 @@
 3. ロードしたスクリプトリストで『chapter_stamp.lua』を選択して、スクリプトウィンドウ右に説明、
    及び設定項目が表示されればインストール完了です。  
 4. インストール作業とは別にメディアソース(STAMP_BEEP)の導入、及び各部のトラック設定が必要です。  
-   下記、[STAMP_BEEP登録・及び音声トラックの設定方法](https://github.com/avalon-kumakuma/OBS-script-ChapterStamp#stamp_beep%E7%99%BB%E9%8C%B2%E5%8F%8A%E3%81%B3%E9%9F%B3%E5%A3%B0%E3%83%88%E3%83%A9%E3%83%83%E3%82%AF%E3%81%AE%E8%A8%AD%E5%AE%9A%E6%96%B9%E6%B3%95)を参照して下さい。
+   下記、[STAMP_BEEP登録・及び音声トラックの設定方法](#stamp_beep%E7%99%BB%E9%8C%B2%E5%8F%8A%E3%81%B3%E9%9F%B3%E5%A3%B0%E3%83%88%E3%83%A9%E3%83%83%E3%82%AF%E3%81%AE%E8%A8%AD%E5%AE%9A%E6%96%B9%E6%B3%95)を参照して下さい。
 
 > [^2]: OBS Studioインストールパスは、利用プラットフォームや提供形態により変化します。  
 

@@ -1,7 +1,7 @@
 --[[
 
     Chapter Stamp
-                Ver.0.9.0
+                Ver.1.0.0
 ]]
 
 obs = obslua
@@ -48,7 +48,7 @@ end
 -- グローバル変数
 -- chapter_stamp.lua config
 cstamp_cfg = {}
-cstamp_cfg.version                 = "0.9.0"            -- Chapter Stamp ソフトウェアバージョン
+cstamp_cfg.version                 = "1.0.0"            -- Chapter Stamp ソフトウェアバージョン
 cstamp_cfg.script_path             = script_path()      -- スクリプトパス
 cstamp_cfg.hotkey_register_name    = "ChapterStamp_chkey_"      -- hotkey_register name
 cstamp_cfg.beep_mediasource_name   = "STAMP_BEEP"       -- スタンプ時に再生するメディアソース名
@@ -67,6 +67,12 @@ cstamp_cfg.logoutput_flg_sname     = "スプリクトログ 出力"
 cstamp_cfg.logoutput_csv_flg       = false              -- コンマ区切り(CSV style)フラグ
 cstamp_cfg.logoutput_csv_flg_dname = "log_output_csv_flg"
 cstamp_cfg.logoutput_csv_flg_sname = "コンマ区切り(CSV)"
+cstamp_cfg.adjuster                = 0                  -- Adjuster Time(sec)
+cstamp_cfg.adjuster_dname          = "adjuster"
+cstamp_cfg.adjuster_sname          = "アジャスター(sec)"
+cstamp_cfg.adjuster_min            = -60                -- マイナス
+cstamp_cfg.adjuster_max            = 60                 -- プラス
+cstamp_cfg.adjuster_step           = 1                  -- 1sec
 
 -- STAMP Output flg
 stamp_flg = {}
@@ -76,9 +82,9 @@ stamp_flg.replay                = false
 stamp_flg.scene_dname           = "stamp_scene"
 stamp_flg.screenshot_dname      = "stamp_screenshot"
 stamp_flg.replay_dname          = "stamp_replay"
-stamp_flg.scene_sname           = "STAMP出力：シーンチェンジ"
-stamp_flg.screenshot_sname      = "STAMP出力：スクリーンショット"
-stamp_flg.replay_sname          = "STAMP出力：リプレイバッファ"
+stamp_flg.scene_sname           = "タイムスタンプ 出力"
+stamp_flg.screenshot_sname      = "タイムスタンプ 出力"
+stamp_flg.replay_sname          = "タイムスタンプ 出力"
 stamp_flg.chotkey_max_number    = 2     -- カスタムホットキー最大数 1~5
 stamp_flg.customhotkey          = {}    -- カスタムホットキー出力フラグ
 stamp_flg.customhotkey_dname    = {}    -- stamp_customhotkey1~?
@@ -95,7 +101,7 @@ for i = 1, stamp_flg.chotkey_max_number do
 end
 for i = 1, stamp_flg.chotkey_max_number do
     stamp_flg.customhotkey_sname[i] = 
-        "STAMP出力：カスタムホットキー " .. tostring(i)
+        "タイムスタンプ 出力"
 end
 for i = 1, stamp_flg.chotkey_max_number do
     stamp_flg.chotkey_label[i] = "CUSTOM_HOTKEY_" .. tostring(i)
@@ -106,7 +112,7 @@ for i = 1, stamp_flg.chotkey_max_number do
 end
 for i = 1, stamp_flg.chotkey_max_number do
     stamp_flg.chotkey_sname_label[i] = 
-        "出力イベント名："
+       "ホットキー" .. tostring(i) .. "："
 end
 if stamp_flg.chotkey_max_number > 5 then
     stamp_flg.chotkey_max_number = 5    -- 個数セーフティー
@@ -120,9 +126,9 @@ pbeep_flg.replay                = false
 pbeep_flg.scene_dname           = "beep_scene"
 pbeep_flg.screenshot_dname      = "beep_screenshot"
 pbeep_flg.replay_dname          = "beep_replay"
-pbeep_flg.scene_sname           = "BEEP再生：シーンチェンジ"
-pbeep_flg.screenshot_sname      = "BEEP再生：スクリーンショット"
-pbeep_flg.replay_sname          = "BEEP再生：リプレイバッファ"
+pbeep_flg.scene_sname           = "STAMP_BEEP 再生"
+pbeep_flg.screenshot_sname      = "STAMP_BEEP 再生"
+pbeep_flg.replay_sname          = "STAMP_BEEP 再生"
 pbeep_flg.customhotkey          = {}    -- BEEP 再生フラグ
 pbeep_flg.customhotkey_dname    = {}    -- beep_customhotkey1~?
 pbeep_flg.customhotkey_sname    = {}    -- BEEP再生：カスタムホットキー1~?
@@ -135,7 +141,7 @@ for i = 1, stamp_flg.chotkey_max_number do
 end
 for i = 1, stamp_flg.chotkey_max_number do
     pbeep_flg.customhotkey_sname[i] = 
-        "BEEP再生：カスタムホットキー " .. tostring(i)
+        "STAMP_BEEP 再生"
 end
 
 -- CHAPTER STAMP CUSTOM HOTKEY
@@ -157,6 +163,7 @@ stats_timer_id                  = nil           -- タイマーID
 stats_sampling_interval         = 500           -- サンプリング間隔 ミリ秒 200~1000 100step
 stats_output_flg_dname          = "stats_output_flg"
 stats_output_flg_sname          = "統計情報 出力"
+stats_min_sampling_num          = 10            -- min_bitrate用、初期サンプル回避数
 -- stats info Sampling Data
 stats_info = {}
 stats_info.last_bytes           = 0             -- 出力データ合計
@@ -191,7 +198,6 @@ LOG_DEBUG   = obs.LOG_DEBUG   -- 400
 -- LOG output Level setting
 log_lv      = LOG_INFO        -- release
 -- log_lv      = LOG_DEBUG       -- debug
-
 
 
 --[[
@@ -307,16 +313,14 @@ function update_chapterfile_output_path()
         if f_profile.Mode == "Advanced"  then
             if f_profile.RecType == "Standard" then
                 if obs.os_file_exists(organize_path(f_profile.RecFilePath, false)) then
-                    cstamp_cfg.chapterfile_output_path = organize_path(f_profile.RecFilePath, 
-                        true)
+                    cstamp_cfg.chapterfile_output_path = organize_path(f_profile.RecFilePath, true)
                 else
                     cstamp_cfg.chapterfile_output_path = ""
                 end
             else
                 if f_profile.RecType == "FFmpeg" then
                     if obs.os_file_exists(organize_path(f_profile.FFFilePath, false)) then
-                        cstamp_cfg.chapterfile_output_path = organize_path(f_profile.FFFilePath, 
-                            true)
+                        cstamp_cfg.chapterfile_output_path = organize_path(f_profile.FFFilePath, true)
                     else
                         cstamp_cfg.chapterfile_output_path = ""
                     end
@@ -421,7 +425,6 @@ function get_frontend_profile_config_value()
         -- end
 end 
 
-
 --[[
     カスタムホットキー イベント
 ]]
@@ -443,42 +446,46 @@ function chapterstamp_frontend_event(event)
         s_log(LOG_WARNING, "warning:os.time()=%d", event_time)      -- 例外処理
         return
     end
-
-    if event == obs.OBS_FRONTEND_EVENT_PROFILE_CHANGED 
-     or event == obs.OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED then
-        s_log(LOG_DEBUG, "PROFILE_CHANGING settings update")
-        get_frontend_profile_config_value()     -- プロファイル各種情報取得
-        update_chapter_stamp_config_value()     -- chapter_stamp.lua config値設定
-    end
     if event == obs.OBS_FRONTEND_EVENT_STREAMING_STARTED
      or event == obs.OBS_FRONTEND_EVENT_RECORDING_STARTED
      or event == obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_STARTED then
-        get_frontend_profile_config_value()     -- プロファイル各種情報取得
-        update_chapter_stamp_config_value()     -- chapter_stamp.lua config値設定
         chapterstamp_started(event, event_time)
-    end
-    if event == obs.OBS_FRONTEND_EVENT_STREAMING_STOPPED
-     or event == obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED
-     or event == obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_STOPPED then
-        chapterstamp_stopped(event, event_time)
-    end
-    if event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED then
-        chapterstamp_event_check(event, event_time, 
-            stamp_flg.scene, pbeep_flg.scene)
+        return
     end
     if event == obs.OBS_FRONTEND_EVENT_SCREENSHOT_TAKEN then
         chapterstamp_event_check(event, event_time, 
             stamp_flg.screenshot, pbeep_flg.screenshot)
+        return
     end
     if event == obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_SAVED then
         chapterstamp_event_check(event, event_time, 
             stamp_flg.replay, pbeep_flg.replay)
+        return
+    end
+    if event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED then
+        chapterstamp_event_check(event, event_time, 
+            stamp_flg.scene, pbeep_flg.scene)
+        return
     end
     for i = 1, stamp_flg.chotkey_max_number do
         if event == OBS_FRONTEND_EVENT_CUSTOMHOTKEY[i] then
             chapterstamp_event_check(event, event_time, 
                 stamp_flg.customhotkey[i], pbeep_flg.customhotkey[i])
+        return
         end
+    end
+    if event == obs.OBS_FRONTEND_EVENT_STREAMING_STOPPED
+     or event == obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED
+     or event == obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_STOPPED then
+        chapterstamp_stopped(event, event_time)
+        return
+    end
+    if event == obs.OBS_FRONTEND_EVENT_PROFILE_CHANGED 
+     or event == obs.OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED then
+        s_log(LOG_DEBUG, "PROFILE_CHANGING settings update")
+        get_frontend_profile_config_value()     -- プロファイル各種情報取得
+        update_chapter_stamp_config_value()     -- chapter_stamp.lua config値設定
+        return
     end
 end
 
@@ -529,17 +536,17 @@ function chapterstamp_started(event, event_time)
             s_log(LOG_DEBUG, "io.output()")
             io.output(cstamp_cfg.chapterfile_open)
             -- CSV style 項目説明行追加
-            if cstamp_cfg.logoutput_csv_flg == true then
-                local line = "Timestamp,FrontendScene,EventType,FileName,URLQueryParameter"
-                io.write(line, "\n")
-                io.flush()              -- OBS クラッシュ対策
-            end
+            local line_table = {"1:interval_alert", "2:Timestamp", "3:URLQueryParameter", 
+                "4:Scene_name", "5:Event_name", "6:Filename", "7:Adjust_stamp", "8:Adjust_URL"}
+            -- line_table[7] = string.format("%s(Setting value:%d)", line_table[7], cstamp_cfg.adjuster)
+            local line = convert_table_to_string(line_table)
+            write_line(line)
         end
     else
         s_log(LOG_WARNING, "warning:chapterfile_output_path None")     -- 例外処理
     end
 
-    -- stats
+    -- stats info reset
     if stats_output_flg == true then
         stats_info = {
             last_bytes = 0, 
@@ -596,9 +603,8 @@ function chapterstamp_stopped(event, event_time)
 
     -- stats
     if stats_output_flg == true then
-        -- 統計サンプリング タイマー登録
+        -- 統計サンプリング タイマー削除
         obs.timer_remove(stats_update_info)
-        --obs.remove_current_callback()
         -- 統計書込み
         write_chapter_stamp(OBS_FRONTEND_EVENT_STATS, event_time)
     end
@@ -615,163 +621,217 @@ function chapterstamp_stopped(event, event_time)
 end
 
 --[[
-    Chapter Stamp ライン書込み
+    Chapter Stamp Output content generation
 ]]
 function write_chapter_stamp(event, event_time)
     s_log(LOG_DEBUG, "write_chapter_stamp()")
 
     local line           = ""        -- 出力ライン
     local diffime        = nil       -- 差分時間
-    local schar          = " "       -- スペース文字 " " or ","
-    local last_file_name = ""
+    local line_table     = { "", "", "", "", "", "", "", "" }
+    -- 1:interval_alert, 2:Timestamp, 3:URLQueryParameter, 4:Scene_name, 
+    --     5:Event_name, 6:Filename, 7:Adjuster_stamp, 8:Adjuster_URL
 
-    if event_time == 0 then          -- 初回スタート処理、差分$
-        diffime = 0 
-    else
+    -- 差分時間
+    if event_time ~= 0 then          -- 初回スタート処理、差分$
         diffime = os.difftime(event_time, cstamp_cfg.started_time)
-    end
-    if cstamp_cfg.logoutput_csv_flg == true then
-        schar = ","             -- CSV style
     else
-        schar = " "
+        diffime = 0
     end
+
+    -- Timestamp＆URL Query
+    line_table[2] = format_timestamp(diffime)               -- 2:Timestamp
+    line_table[3] = string.format("&t=%d", diffime)         -- 3:URLQueryParameter
+    line_table[4] = get_current_sname()                     -- 4:Scene_name(Frontend)
+    local adj_time = diffime + cstamp_cfg.adjuster
+    line_table[7] = format_timestamp(adj_time)              -- 7:Adjuster_stamp
+    if adj_time > 0 then                                    -- 8:Adjuster_URL
+        line_table[8] = string.format("&t=%d", adj_time)
+    else
+        line_table[8] = "&t=0"      -- ライブアーカイブURL対策 0に置き換え
+    end
+
+    -- 1:interval_alert 警告表示
+    if cstamp_cfg.previous_elapsed ~= nil then
+        -- Youtube仕様対策 cstamp_cfg.spacing_limitより小さければ ＊＊＊付
+        if (diffime - cstamp_cfg.previous_elapsed) < cstamp_cfg.spacing_limit then
+            line_table[1] = "@"
+        end
+    end
+    cstamp_cfg.previous_elapsed = diffime    -- 前回タイムスタンプ代入
+
     -- START
     if event == obs.OBS_FRONTEND_EVENT_STREAMING_STARTED then
-        line = format_chapter_line(string.format("%s%s%s%s%s&t=%d", 
-                get_current_sname(), schar, "-- STREAMING START --", schar, 
-                schar, diffime), diffime)
+        line_table[5] = "-- STREAMING START --"
+        line = convert_table_to_string(line_table)
+        write_line(line)
+        return
     end
     if event == obs.OBS_FRONTEND_EVENT_RECORDING_STARTED then
-        --[[
-            last name API
-        ]]
-        last_file_name = extract_filename(obs.obs_frontend_get_last_recording())
-        line = format_chapter_line(string.format("%s%s%s%s%s%s&t=%d", 
-                get_current_sname(), schar, "-- RECORDING START --", schar, last_file_name, 
-                schar, diffime), diffime)
-        --[[
-            None last name API  実際のファイル名とズレる
-        ]]
-        -- last_file_name = os.date(convert_filename_format(f_profile.FilenameFormatting), 
-        --     cstamp_cfg.started_time)
-        -- line = format_chapter_line(string.format("%s%s%s%s%s%s&t=%d", 
-        --         get_current_sname(), schar, "-- RECORDING START --", schar, last_file_name, 
-        --         schar, diffime), diffime)
+        line_table[5] = "-- RECORDING START --"
+        line_table[6] = extract_filename(obs.obs_frontend_get_last_recording())
+        line = convert_table_to_string(line_table)
+        write_line(line)
+        return
     end
     if event == obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_STARTED then
-        line = format_chapter_line(string.format("%s%s%s%s%s&t=%d", 
-                get_current_sname(), schar, "-- REPLAY BUFFER START --", schar, 
-                schar, diffime), diffime)
+        line_table[5] = "-- REPLAY BUFFER START --"
+        line = convert_table_to_string(line_table)
+        write_line(line)
+        return
     end
 
-    -- STOP
-    if event == obs.OBS_FRONTEND_EVENT_STREAMING_STOPPED then
-        line = format_chapter_line(string.format("%s%s%s%s%s&t=%d", 
-                get_current_sname(), schar, "-- STREAMING STOP --", schar, 
-                schar, diffime), diffime)
-    end
-    if event == obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED then
-        line = format_chapter_line(string.format("%s%s%s%s%s&t=%d", 
-                get_current_sname(), schar, "-- RECORDING STOP --", schar, 
-                schar, diffime), diffime)
-    end
-    if event == obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_STOPPED then
-        line = format_chapter_line(string.format("%s%s%s%s%s&t=%d", 
-                get_current_sname(), schar, "-- REPLAY BUFFER STOP --", schar, 
-                schar, diffime), diffime)
-    end
-    -- stats
-    if event == OBS_FRONTEND_EVENT_STATS then
-        line = string.format("About Stats Information:%s%s\n", schar, os.date("%Y-%m-%d %H:%M:%S", event_time))
-        line = line .. string.format("Sampling Count:%s%d\n", schar, stats_info.count)
-        line = line .. string.format("Total Output Data(Not FileSize) :%s%.2f Mbytes\n", schar, (stats_info.last_bytes/1048576))
-        local avg_bitrate = stats_info.sum_bitrate / stats_info.count
-        line = line .. string.format("Average bitrate:%s%d kbps\n", schar, (avg_bitrate/1024))
-        line = line .. string.format("Maximum bitrate:%s%d kbps\n", schar, (stats_info.max_bitrate/1024))
-        if stats_info.count > 20 then
-            line = line .. string.format("Minimum bitrate:%s%d kbps\n", schar, (stats_info.min_bitrate/1024))
-        else
-            line = line .. string.format(
-                    "Minimum bitrate:%sUnable to measure due to small number of samples\n", schar)
-        end
-        local dropped_frame_rate = stats_info.dropped_frames / stats_info.total_frames * 100
-        line = line .. string.format("Network Dropped frames:%s%d\n", schar, stats_info.dropped_frames)
-        line = line .. string.format("Total frames:%s%d\n", schar, stats_info.total_frames)
-        line = line .. string.format("Dropped frame rate:%s%3.2f%%\n", schar, dropped_frame_rate)
-    end
-    -- scene
-    if event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED then
-        line = format_chapter_line(string.format("%s%s%s%s%s&t=%d", 
-            get_current_sname(), schar, "SCENE_CHANGE", schar, schar, diffime), diffime)
-    end
     -- screenshot
     if event == obs.OBS_FRONTEND_EVENT_SCREENSHOT_TAKEN then
-        -- last name API
-        last_file_name = extract_filename(obs.obs_frontend_get_last_screenshot())
-        line = format_chapter_line(string.format("%s%s%s%s%s%s&t=%d", 
-            get_current_sname(), schar, "SCREENSHOT", schar, last_file_name, schar, 
-            diffime), diffime)
-        -- None last name API  実際のファイル名とズレる
-        -- last_file_name = os.date(cstamp_cfg.sshot_stamp_file_name, event_time)
-        -- line = format_chapter_line(string.format("%s%s%s%s%s%s&t=%d", 
-        --     get_current_sname(), schar, "SCREENSHOT", schar, last_file_name, schar, 
-        --     diffime), diffime)
+        line_table[5] = "SCREENSHOT"
+        line_table[6] = extract_filename(obs.obs_frontend_get_last_screenshot())
+        line = convert_table_to_string(line_table)
+        write_line(line)
+        return
     end
     -- replay buffer
     if event == obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_SAVED then
-        -- last name API
-        last_file_name = extract_filename(obs.obs_frontend_get_last_replay())
-        line = format_chapter_line(string.format("%s%s%s%s%s%s&t=%d", 
-            get_current_sname(), schar, "REPLAY BUFFER", schar, last_file_name, schar, 
-            diffime), diffime)
-        -- None last name API 実際のファイル名とズレる
-        -- last_file_name = os.date(cstamp_cfg.repaly_stamp_file_name, event_time)
-        -- line = format_chapter_line(string.format("%s%s%s%s%s%s&t=%d", 
-        --     get_current_sname(), schar, "REPLAY BUFFER", schar, last_file_name, schar, 
-        --     diffime), diffime)
+        line_table[5] = "REPLAY BUFFER"
+        line_table[6] = extract_filename(obs.obs_frontend_get_last_replay())
+        line = convert_table_to_string(line_table)
+        write_line(line)
+        return
+    end
+    -- scene
+    if event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED then
+        line_table[5] = "SCENE_CHANGE"
+        line = convert_table_to_string(line_table)
+        write_line(line)
+        return
     end
     -- custom hotkey
     for i = 1, stamp_flg.chotkey_max_number do
         if event == OBS_FRONTEND_EVENT_CUSTOMHOTKEY[i] then
-            line = format_chapter_line(string.format("%s%s%s%s%s&t=%d", 
-                get_current_sname(), schar, stamp_flg.chotkey_label[i], schar, schar, diffime), diffime)
+            line_table[5] = stamp_flg.chotkey_label[i]
+            line = convert_table_to_string(line_table)
+            write_line(line)
+            return
         end
     end
 
+    -- STOP
+    if event == obs.OBS_FRONTEND_EVENT_STREAMING_STOPPED then
+        line_table[5] = "-- STREAMING STOP --"
+        line = convert_table_to_string(line_table)
+        write_line(line)
+        return
+    end
+    if event == obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED then
+        line_table[5] = "-- RECORDING STOP --"
+        line = convert_table_to_string(line_table)
+        write_line(line)
+        return
+    end
+    if event == obs.OBS_FRONTEND_EVENT_REPLAY_BUFFER_STOPPED then
+        line_table[5] = "-- REPLAY BUFFER STOP --"
+        line = convert_table_to_string(line_table)
+        write_line(line)
+        return
+    end
+
+    -- stats
+    if event == OBS_FRONTEND_EVENT_STATS then
+        local stats_output = {}
+        stats_output["1,About Stats Information:"]   = os.date("%Y-%m-%d %H:%M:%S", event_time)
+        stats_output["2,Sampling Count:"]            = stats_info.count
+        stats_output["3,Total Output Data(NotFileSize)(Mbytes):"] = 
+                                            string.format("%.2f", (stats_info.last_bytes/1048576))
+        local avg_bitrate = stats_info.sum_bitrate / stats_info.count
+        stats_output["4,Average bitrate(kbps):"]     = string.format("%d", (avg_bitrate/1024))
+        stats_output["5,Maximum bitrate(kbps):"]     = string.format("%d", (stats_info.max_bitrate/1024))
+        if stats_info.count > stats_min_sampling_num then
+            stats_output["6,Minimum bitrate(kbps):"] = string.format("%d", (stats_info.min_bitrate/1024))
+        else
+            stats_output["6,Minimum bitrate(kbps):"] = "Unable to measure due to small number of samples"
+        end
+        local dropped_frame_rate = stats_info.dropped_frames / stats_info.total_frames * 100
+        stats_output["7,Network Dropped frames:"]    = stats_info.dropped_frames
+        stats_output["8,Total frames:"]              = stats_info.total_frames
+        stats_output["9,Dropped frame rate(%):"]     = string.format("%3.2f", dropped_frame_rate)
+        line = "\n" .. stats_table_to_string(stats_output)
+        write_line(line)
+        return
+    end
+end
+
+--[[
+    ファイル書込み
+]]
+function write_line(line)
+    s_log(LOG_DEBUG, "write_line")
     local r = io.write(line, "\n")
     io.flush()         -- OBS クラッシュ対策で逐次書込み
-
+    s_log(LOG_DEBUG, tostring(r))
     s_log(LOG_INFO, line)
 end
 
 --[[
-    差分時間変換及び警告表示追加
+    差分時間変換
 ]]
-function format_chapter_line(output_line, diffime)
-    s_log(LOG_DEBUG, "format_chapter_line():" .. tostring(diffime))
-
-    local schar = " "       -- space" " or comma","
-    if cstamp_cfg.logoutput_csv_flg == true then
-        schar   = ","
-    else
-        schar   = " "
+function format_timestamp(diffime)
+    s_log(LOG_DEBUG, "format_timestamp():" .. tostring(diffime))
+    -- マイナス記号の追加
+    local minus_sign = ""
+    if diffime < 0 then
+        minus_sign = "-"
+        diffime = math.abs(diffime)
     end
     -- 差分時間変換
-    local seconds = math.floor(diffime % 60)
-    local minutes = math.floor((diffime / 60) % 60)
-    local hours   = math.floor(diffime / 3600)
-    local warning_sign = ""
-    -- 警告表示
-    if cstamp_cfg.previous_elapsed ~= nil then
-        -- Youtube仕様対策 cstamp_cfg.spacing_limitより小さければ ＊付
-        if (diffime - cstamp_cfg.previous_elapsed) < cstamp_cfg.spacing_limit then
-            warning_sign = "*"
-        end
+    local seconds = math.abs(math.floor(diffime % 60))
+    local minutes = math.abs(math.floor((diffime / 60) % 60))
+    local hours   = math.abs(math.floor(diffime / 3600))
+
+    return string.format("%s%02d:%02d:%02d", minus_sign, hours, minutes, seconds)
+end
+
+--[[
+    テーブル変数を展開して、カンマ or スペース 区切りに変換
+        テーブルindex整数(1～)でないと正常動作しない(table.concat)
+]]
+function convert_table_to_string(line_table)
+    s_log(LOG_DEBUG, "convert_table_to_string")
+    local delimiter
+    if cstamp_cfg.logoutput_csv_flg then
+        delimiter = ","
+    else
+        delimiter = " "
+    end
+    local line = table.concat(line_table, delimiter)
+    return line
+end
+
+--[[
+    統計情報テーブルを展開して、カンマ or スペース 区切りに変換
+]]
+function stats_table_to_string(stats_table)
+    s_log(LOG_DEBUG, "stats_table_to_string")
+    local line = ""
+    local delimiter
+    if cstamp_cfg.logoutput_csv_flg then
+        delimiter = ","
+    else
+        delimiter = " "
     end
 
-    cstamp_cfg.previous_elapsed = diffime
-    return string.format("%s%02d:%02d:%02d%s%s", warning_sign, hours, minutes, seconds, 
-               schar, output_line)
+    -- キーを別のテーブルに保存
+    local keys = {}
+    for key in pairs(stats_table) do
+        table.insert(keys, key)
+    end
+    -- キーをソート
+    table.sort(keys)
+    -- ソートしたキー順に値を取得
+    for _, key in ipairs(keys) do
+        local value = stats_table[key]
+        line = line .. key .. delimiter .. tostring(value) .. "\n"
+    end
+
+    return line
 end
 
 --[[
@@ -944,8 +1004,8 @@ function stats_update_info()
         stats_info.sum_bitrate = stats_info.sum_bitrate + bitrate
         stats_info.count = stats_info.count + 1
         stats_info.max_bitrate = math.max(stats_info.max_bitrate, bitrate)
-        -- 初動の不安定な低ビットレートを排除 20サンプリング
-        if stats_info.count > 20 then
+        -- 初動の不安定な低ビットレートを排除 10サンプリング
+        if stats_info.count > stats_min_sampling_num then
             stats_info.min_bitrate = math.min(stats_info.min_bitrate, bitrate)
         end
 
@@ -953,6 +1013,7 @@ function stats_update_info()
         stats_info.dropped_frames = dropped_frames
 
         -- debug code
+        --[[
             s_log(LOG_DEBUG, "About Stats Information")
             s_log(LOG_DEBUG, string.format("Sampling Count: %d", stats_info.count))
             s_log(LOG_DEBUG, string.format("Total Output Data(Not FileSize): %.2f Mbytes", (stats_info.last_bytes/1048576)))
@@ -964,7 +1025,7 @@ function stats_update_info()
             s_log(LOG_DEBUG, string.format("Network Dropped frames: %d", stats_info.dropped_frames))
             s_log(LOG_DEBUG, string.format("Total frames: %d", stats_info.total_frames))
             s_log(LOG_DEBUG, string.format("Dropped frame rate: %3.2f%%", dropped_frame_rate))
-        
+        ]]
     end
 end
 
@@ -1011,6 +1072,10 @@ function script_save(settings)
         obs.obs_data_array_release(hotkey_save_array)
     end
 
+    -- OBS Studio 設定変更時の情報反映
+    get_frontend_profile_config_value()     -- プロファイル各種情報取得
+    update_chapter_stamp_config_value()     -- chapter_stamp.lua config値設定
+
 end
 
 --[[
@@ -1032,35 +1097,33 @@ end
 function script_update(settings)
     s_log(LOG_DEBUG, "script_update()")
 
-    stamp_flg.scene         = obs.obs_data_get_bool(settings, stamp_flg.scene_dname)
-    stamp_flg.screenshot    = obs.obs_data_get_bool(settings, stamp_flg.screenshot_dname)
-    stamp_flg.replay        = obs.obs_data_get_bool(settings, stamp_flg.replay_dname)
-    for i = 1, stamp_flg.chotkey_max_number do
-        stamp_flg.customhotkey[i] = 
-            obs.obs_data_get_bool(settings, stamp_flg.customhotkey_dname[i])
-        stamp_flg.chotkey_label[i] = 
-            obs.obs_data_get_string(settings, stamp_flg.chotkey_dname_label[i])
-    end
-
-    pbeep_flg.scene         = obs.obs_data_get_bool(settings, pbeep_flg.scene_dname)
-    pbeep_flg.screenshot    = obs.obs_data_get_bool(settings, pbeep_flg.screenshot_dname)
-    pbeep_flg.replay        = obs.obs_data_get_bool(settings, pbeep_flg.replay_dname)
-    for i = 1, stamp_flg.chotkey_max_number do
-        pbeep_flg.customhotkey[i] = 
-            obs.obs_data_get_bool(settings, pbeep_flg.customhotkey_dname[i])
-    end
-
     cstamp_cfg.logoutput_csv_flg = obs.obs_data_get_bool(settings, 
                                         cstamp_cfg.logoutput_csv_flg_dname)
     stats_output_flg = obs.obs_data_get_bool(settings, 
                                         stats_output_flg_dname)
     cstamp_cfg.logoutput_flg = obs.obs_data_get_bool(settings, 
                                         cstamp_cfg.logoutput_flg_dname)
+    cstamp_cfg.adjuster = obs.obs_data_get_int(settings, cstamp_cfg.adjuster_dname)
+
+    stamp_flg.scene         = obs.obs_data_get_bool(settings, stamp_flg.scene_dname)
+    pbeep_flg.scene         = obs.obs_data_get_bool(settings, pbeep_flg.scene_dname)
+    stamp_flg.screenshot    = obs.obs_data_get_bool(settings, stamp_flg.screenshot_dname)
+    pbeep_flg.screenshot    = obs.obs_data_get_bool(settings, pbeep_flg.screenshot_dname)
+    stamp_flg.replay        = obs.obs_data_get_bool(settings, stamp_flg.replay_dname)
+    pbeep_flg.replay        = obs.obs_data_get_bool(settings, pbeep_flg.replay_dname)
+
+    for i = 1, stamp_flg.chotkey_max_number do
+        stamp_flg.chotkey_label[i] = 
+            obs.obs_data_get_string(settings, stamp_flg.chotkey_dname_label[i])
+        stamp_flg.customhotkey[i] = 
+            obs.obs_data_get_bool(settings, stamp_flg.customhotkey_dname[i])
+        pbeep_flg.customhotkey[i] = 
+            obs.obs_data_get_bool(settings, pbeep_flg.customhotkey_dname[i])
+    end
 
     get_frontend_profile_config_value()     -- プロファイル各種情報取得
-    beep_file_check()                       -- beepファイルチェック
     update_chapter_stamp_config_value()     -- chapter_stamp.lua config値設定
-
+    beep_file_check()                       -- beepファイルチェック
     -- debug code
         -- s_log(LOG_DEBUG, "cstamp_cfg-----")
         -- for key, value in pairs(cstamp_cfg) do
@@ -1095,7 +1158,6 @@ function print_table(t, indent)
     end
 end
 
-
 --[[
     callback script_defaults(settings)
         初期値設定
@@ -1103,26 +1165,24 @@ end
 function script_defaults(settings)
     s_log(LOG_DEBUG, "script_defaults()")
 
-    obs.obs_data_set_default_bool(settings, stamp_flg.scene_dname,         true)
-    obs.obs_data_set_default_bool(settings, stamp_flg.screenshot_dname,    true)
-    obs.obs_data_set_default_bool(settings, stamp_flg.replay_dname,        true)
-    for i = 1, stamp_flg.chotkey_max_number do
-        obs.obs_data_set_default_bool(settings, stamp_flg.customhotkey_dname[i], true)
-        obs.obs_data_set_default_string(settings, stamp_flg.chotkey_dname_label[i], 
-            -- "CUSTOM_HOTKEY_" .. tostring(i))    -- テキスト custom hotkey event名
-            stamp_flg.chotkey_label[i])    -- テキスト custom hotkey event名
-    end
-
-    obs.obs_data_set_default_bool(settings, pbeep_flg.scene_dname,         true)
-    obs.obs_data_set_default_bool(settings, pbeep_flg.screenshot_dname,    true)
-    obs.obs_data_set_default_bool(settings, pbeep_flg.replay_dname,        true)
-    for i = 1, stamp_flg.chotkey_max_number do
-        obs.obs_data_set_default_bool(settings, pbeep_flg.customhotkey_dname[i], true)
-    end
-
     obs.obs_data_set_default_bool(settings, cstamp_cfg.logoutput_csv_flg_dname, false)
     obs.obs_data_set_default_bool(settings, stats_output_flg_dname, false)
     obs.obs_data_set_default_bool(settings, cstamp_cfg.logoutput_flg_dname, true)
+    obs.obs_data_set_default_int(settings, cstamp_cfg.adjuster_dname, cstamp_cfg.adjuster)
+
+    obs.obs_data_set_default_bool(settings, stamp_flg.scene_dname,         true)
+    obs.obs_data_set_default_bool(settings, pbeep_flg.scene_dname,         true)
+    obs.obs_data_set_default_bool(settings, stamp_flg.screenshot_dname,    true)
+    obs.obs_data_set_default_bool(settings, pbeep_flg.screenshot_dname,    true)
+    obs.obs_data_set_default_bool(settings, stamp_flg.replay_dname,        true)
+    obs.obs_data_set_default_bool(settings, pbeep_flg.replay_dname,        true)
+
+    for i = 1, stamp_flg.chotkey_max_number do
+        obs.obs_data_set_default_string(settings, stamp_flg.chotkey_dname_label[i], 
+            stamp_flg.chotkey_label[i])    -- テキスト custom hotkey event名
+        obs.obs_data_set_default_bool(settings, stamp_flg.customhotkey_dname[i], true)
+        obs.obs_data_set_default_bool(settings, pbeep_flg.customhotkey_dname[i], true)
+    end
 
 end
 
@@ -1135,36 +1195,49 @@ function script_properties()
 
     local props = obs.obs_properties_create()
 
-    obs.obs_properties_add_bool(props, stamp_flg.scene_dname,      stamp_flg.scene_sname)
-    obs.obs_properties_add_bool(props, stamp_flg.screenshot_dname, stamp_flg.screenshot_sname)
-    obs.obs_properties_add_bool(props, stamp_flg.replay_dname,     stamp_flg.replay_sname)
-    for i = 1, stamp_flg.chotkey_max_number do
-        obs.obs_properties_add_bool(props, stamp_flg.customhotkey_dname[i], 
-            stamp_flg.customhotkey_sname[i])
-        obs.obs_properties_add_text(props, stamp_flg.chotkey_dname_label[i], 
-            stamp_flg.chotkey_sname_label[i], obs.OBS_TEXT_DEFAULT)
-    end
+    -- グループ：その他
+    local group_advanced = obs.obs_properties_create()
+    obs.obs_properties_add_bool(group_advanced, cstamp_cfg.logoutput_csv_flg_dname,  
+        cstamp_cfg.logoutput_csv_flg_sname)
+    obs.obs_properties_add_bool(group_advanced, stats_output_flg_dname,  
+        stats_output_flg_sname)
+    obs.obs_properties_add_bool(group_advanced, cstamp_cfg.logoutput_flg_dname,  
+        cstamp_cfg.logoutput_flg_sname)
+    obs.obs_properties_add_int_slider(group_advanced, cstamp_cfg.adjuster_dname, 
+        cstamp_cfg.adjuster_sname, cstamp_cfg.adjuster_min, cstamp_cfg.adjuster_max, cstamp_cfg.adjuster_step)
+    obs.obs_properties_add_group(props, "group_advanced", "その他", obs.OBS_GROUP_NORMAL, group_advanced)
 
-    obs.obs_properties_add_bool(props, pbeep_flg.scene_dname,        pbeep_flg.scene_sname)
-    obs.obs_properties_add_bool(props, pbeep_flg.screenshot_dname,   pbeep_flg.screenshot_sname)
-    obs.obs_properties_add_bool(props, pbeep_flg.replay_dname,       pbeep_flg.replay_sname)
+    local group_scene = obs.obs_properties_create()         -- グループ：シーンチェンジ
+    obs.obs_properties_add_bool(group_scene, stamp_flg.scene_dname,      stamp_flg.scene_sname)
+    obs.obs_properties_add_bool(group_scene, pbeep_flg.scene_dname,        pbeep_flg.scene_sname)
+    obs.obs_properties_add_group(props, "group_scene", "シーンチェンジ", obs.OBS_GROUP_NORMAL, group_scene)
+    local group_screenshot = obs.obs_properties_create()    -- グループ：スクリーンショット
+    obs.obs_properties_add_bool(group_screenshot, stamp_flg.screenshot_dname, stamp_flg.screenshot_sname)
+    obs.obs_properties_add_bool(group_screenshot, pbeep_flg.screenshot_dname,   pbeep_flg.screenshot_sname)
+    obs.obs_properties_add_group(props, "group_screenshot", "スクリーンショット", obs.OBS_GROUP_NORMAL, group_screenshot)
+    local group_replay = obs.obs_properties_create()        -- グループ：リプレイバッファ
+    obs.obs_properties_add_bool(group_replay, stamp_flg.replay_dname,     stamp_flg.replay_sname)
+    obs.obs_properties_add_bool(group_replay, pbeep_flg.replay_dname,       pbeep_flg.replay_sname)
+    obs.obs_properties_add_group(props, "group_replay", "リプレイバッファ", obs.OBS_GROUP_NORMAL, group_replay)
+
+    local group_chotkey = obs.obs_properties_create()       -- グループ：カスタムホットキー
     for i = 1, stamp_flg.chotkey_max_number do
-        obs.obs_properties_add_bool(props, pbeep_flg.customhotkey_dname[i], 
+        obs.obs_properties_add_text(group_chotkey, stamp_flg.chotkey_dname_label[i], 
+            stamp_flg.chotkey_sname_label[i], obs.OBS_TEXT_DEFAULT)
+        obs.obs_properties_add_bool(group_chotkey, stamp_flg.customhotkey_dname[i], 
+            stamp_flg.customhotkey_sname[i])
+        obs.obs_properties_add_bool(group_chotkey, pbeep_flg.customhotkey_dname[i], 
             pbeep_flg.customhotkey_sname[i])
     end
+    obs.obs_properties_add_group(props, "group_chotkey", "カスタムホットキー", obs.OBS_GROUP_NORMAL, group_chotkey)
 
-    obs.obs_properties_add_bool(props, cstamp_cfg.logoutput_csv_flg_dname,  
-        cstamp_cfg.logoutput_csv_flg_sname)
-    obs.obs_properties_add_bool(props, stats_output_flg_dname,  
-        stats_output_flg_sname)
-    obs.obs_properties_add_bool(props, cstamp_cfg.logoutput_flg_dname,  
-        cstamp_cfg.logoutput_flg_sname)
-
+    local group_setting = obs.obs_properties_create()       -- グループ：設定機能
     -- STAMP_BEEP mediasource add/remove button
-    obs.obs_properties_add_button(props, "add_stamp_beep_button", 
+    obs.obs_properties_add_button(group_setting, "add_stamp_beep_button", 
         "ALLシーン：STAMP_BEEPを登録", add_stamp_beep_all_scenes)
-    obs.obs_properties_add_button(props, "remove_stamp_beep_button", 
+    obs.obs_properties_add_button(group_setting, "remove_stamp_beep_button", 
         "ALLシーン：STAMP_BEEPを削除", remove_stamp_beep_all_scenes)
+    obs.obs_properties_add_group(props, "group_setting", "設定機能", obs.OBS_GROUP_NORMAL, group_setting)
 
     return props
 end
